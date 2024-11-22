@@ -1,0 +1,29 @@
+# Python virtual environment
+/backend/venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Environment variables
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Application specific
+/backend/data/*
+!/backend/data/.gitkeep
+
+# Keep frontend's own gitignore
+!/frontend/.gitignore
