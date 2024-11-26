@@ -90,33 +90,32 @@ const Timer = ({ seconds, onComplete }) => {
 
   // Setup timer
   useEffect(() => {
+    // Initialize timeLeft
+    setTimeLeft(seconds);
+    
     // Clear any existing interval
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
     }
 
-    // Don't start if already at 0
-    if (timeLeft <= 0) {
-      onCompleteRef.current?.();
-      return;
-    }
-
     // Start new interval
     intervalRef.current = setInterval(() => {
       setTimeLeft(prev => {
+        const nextTime = prev - 1;
+        
         // Check for warning state
-        if (prev <= WARNING_TIME && !isWarning) {
+        if (nextTime <= WARNING_TIME && !isWarning) {
           setIsWarning(true);
         }
 
         // Check for completion
-        if (prev <= 1) {
+        if (nextTime <= 0) {
           clearInterval(intervalRef.current);
           onCompleteRef.current?.();
           return 0;
         }
 
-        return prev - 1;
+        return nextTime;
       });
     }, 1000);
 
@@ -126,7 +125,7 @@ const Timer = ({ seconds, onComplete }) => {
         clearInterval(intervalRef.current);
       }
     };
-  }, [timeLeft, isWarning]);
+  }, [seconds]); // Only depend on seconds prop
 
   // Format time display
   const minutes = Math.floor(timeLeft / 60);
