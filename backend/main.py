@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, ValidationError, validator
+from pydantic import BaseModel, Field, validator
 import openai
 import os
 import json
@@ -9,18 +9,13 @@ from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
 import logging
-from typing import Dict, Optional, Literal, List, Union
 import boto3
+from typing import Dict, Optional, Literal, List, Union
 from io import BytesIO
 import csv
 import requests
 from PIL import Image
-import dns.resolver
-import socket
-from urllib.parse import urlparse
-from collections import defaultdict
-from functools import wraps
-from asyncio import Lock
+
 
 # Configure logging
 logging.basicConfig(
@@ -36,12 +31,13 @@ load_dotenv()
 app = FastAPI(title="Research Task Backend", version="2.0.0")
 app.mount("/data", StaticFiles(directory="data"), name="data")
 
-# CORS middleware configuration
+# Add CORS middleware
 origins = [
     "http://localhost:3000",
     "http://localhost:8000",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:8000",
+    "https://be-creative-backend-a3147a3a7132.herokuapp.com",
+    "https://be-creative-app.herokuapp.com",
+    "https://be-creative-backend.herokuapp.com"
 ]
 
 app.add_middleware(
@@ -57,16 +53,50 @@ openai.api_key = os.getenv('OPENAI_API_KEY')
 if not openai.api_key:
     raise ValueError("OPENAI_API_KEY environment variable is not set")
 
+
+# Check if running on Heroku
+def is_heroku():
+    return 'DYNO' in os.environ
+
+
+if is_heroku() and os.getenv('AWS_ACCESS_KEY_ID'):
+    try:
+        s3 = boto3.client(
+            's3',
+            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+            region_name='us-east-1'  # Specify your region
+        )
+        BUCKET_NAME = os.getenv('AWS_BUCKET_NAME')
+        S3_PREFIX = 'be-creative/'
+
+        # Test S3 connection
+        s3.head_bucket(Bucket=BUCKET_NAME)
+        logger.info("Successfully connected to S3")
+
+    except Exception as e:
+        logger.error(f"Failed to initialize S3: {str(e)}")
+        raise HTTPException(status_code=500, detail="S3 initialization failed")
+else:
+    s3 = None
+    BUCKET_NAME = None
+    S3_PREFIX = None
+    S3_PREFIX = None
+
+
 class PageTiming(BaseModel):
     prolificId: str = Field(..., min_length=1)
     page: str
     duration: int  # milliseconds
     timestamp: str
 
-# Data Models
+
 class TimingData(BaseModel):
     firstKeypressLatency: Optional[float] = Field(None, ge=0)
     totalResponseTime: Optional[float] = Field(None, ge=0)
+    selectionPhaseStart: Optional[str] = None
+    selectionPhaseDuration: Optional[float] = Field(None, ge=0)
+
 
 class AiExperienceSurvey(BaseModel):
     genAiExperience: Literal[
@@ -78,14 +108,16 @@ class AiExperienceSurvey(BaseModel):
     toolsUsed: Dict[str, bool]
     otherTools: Optional[str] = None
 
+
 class SurveySubmission(BaseModel):
     prolificId: str = Field(..., min_length=1)
     survey: AiExperienceSurvey
     timestamp: str
 
+
 class PromptSubmission(BaseModel):
     prolificId: str = Field(..., min_length=1)
-    trialIndex: int = Field(..., ge=0, lt=7)  # 0-6 for seven trials (1 practice + 6 main)
+    trialIndex: int = Field(..., ge=0, lt=7)  # 0-6 for seven trials (1p+6main)
     condition: Literal['BE_CREATIVE', 'BE_FLUENT', 'practice']
     theme: str
     prompts: List[str]
@@ -103,6 +135,7 @@ class PromptSubmission(BaseModel):
             raise ValueError('Prompt too long')
         return v
 
+
 class ImageGenerationStatus(BaseModel):
     trialIndex: int
     status: Literal['pending', 'completed', 'failed']
@@ -112,6 +145,7 @@ class ImageGenerationStatus(BaseModel):
     imagePath: Optional[str] = None
     error: Optional[str] = None
     timestamp: str
+
 
 class ImageRating(BaseModel):
     prolificId: str = Field(..., min_length=1)
@@ -123,7 +157,7 @@ class ImageRating(BaseModel):
     condition: str
     prompt: str
 
-# Storage Helper Class
+
 class DataStorage:
     def __init__(self, base_dir: Path = Path("data")):
         self.base_dir = base_dir
@@ -132,7 +166,7 @@ class DataStorage:
     def save_csv(self, data: dict, filename: str) -> None:
         filepath = self.base_dir / filename
         is_new_file = not filepath.exists()
-        
+
         with open(filepath, "a", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=data.keys())
             if is_new_file:
@@ -157,10 +191,10 @@ class DataStorage:
         image = Image.open(BytesIO(response.content))
         image.save(filepath)
 
-# Initialize storage
+
 storage = DataStorage()
 
-# Background Tasks Helper
+
 async def generate_image_background(
     prolific_id: str,
     prompt: str,
@@ -171,7 +205,7 @@ async def generate_image_background(
 ) -> None:
     try:
         logger.info(f"Starting background generation for trial {trial_index}")
-        
+
         # Create status entry
         status = ImageGenerationStatus(
             trialIndex=trial_index,
@@ -181,7 +215,7 @@ async def generate_image_background(
             condition=condition,
             timestamp=timestamp
         )
-        
+
         status_path = storage.base_dir / prolific_id / "generation_status.json"
         current_status = storage.load_json(status_path)
         current_status[str(trial_index)] = status.dict()
@@ -198,7 +232,10 @@ async def generate_image_background(
         )
 
         # Save image
-        image_path = storage.base_dir / prolific_id / "images" / f"trial_{trial_index:02d}.png"
+        image_path = (
+            storage.base_dir / prolific_id / "images" /
+            f"trial_{trial_index:02d}.png"
+        )
         await storage.save_image(response.data[0].url, image_path)
 
         # Update status
@@ -209,18 +246,19 @@ async def generate_image_background(
 
         def update_prompt_generated_status():
             temp_file = Path("data/prompts_temp.csv")
-            with open("data/prompts.csv", 'r') as file, open(temp_file, 'w', newline='') as temp:
+            with open("data/prompts.csv", 'r') as file, \
+                 open(temp_file, 'w', newline='') as temp:
                 reader = csv.DictReader(file)
                 writer = csv.DictWriter(temp, fieldnames=reader.fieldnames)
                 writer.writeheader()
-                
+
                 for row in reader:
-                    if (row['prolificId'] == prolific_id and 
-                        int(row['trialIndex']) == trial_index and 
-                        row['prompt'] == prompt):
+                    if (row['prolificId'] == prolific_id and
+                        int(row['trialIndex']) == trial_index and
+                            row['prompt'] == prompt):
                         row['generated'] = True
                     writer.writerow(row)
-                    
+
             temp_file.replace(Path("data/prompts.csv"))
 
         update_prompt_generated_status()
@@ -234,13 +272,12 @@ async def generate_image_background(
         current_status[str(trial_index)] = status.dict()
         storage.save_json(current_status, status_path)
 
-        # API Endpoints
+
 @app.post("/api/save-survey")
 async def save_survey(submission: SurveySubmission):
     try:
         logger.info(f"Saving survey for participant: {submission.prolificId}")
-        
-        # Save to CSV
+
         survey_dict = {
             'timestamp': submission.timestamp,
             'prolificId': submission.prolificId,
@@ -260,6 +297,7 @@ async def save_survey(submission: SurveySubmission):
         logger.error(f"Error in save_survey: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/api/save-prompt")
 async def save_prompt(submission: PromptSubmission, background_tasks: BackgroundTasks):
     try:
@@ -276,12 +314,14 @@ async def save_prompt(submission: PromptSubmission, background_tasks: Background
                     'theme': submission.theme,
                     'prompt': prompt,
                     'selected': prompt == submission.selectedPrompt,
-                    'generated': False,  # Will be updated when image is generated
+                    'generated': False,
                     'trial_pos': index,
                     'isPractice': submission.isPractice,
                     'conditionOrder': submission.conditionOrder,
                     'firstKeypressLatency': submission.timingData.firstKeypressLatency if submission.timingData else None,
-                    'totalResponseTime': submission.timingData.totalResponseTime if submission.timingData else None
+                    'totalResponseTime': submission.timingData.totalResponseTime if submission.timingData else None,
+                    'selectionPhaseStart': submission.timingData.selectionPhaseStart if submission.timingData else None,
+                    'selectionPhaseDuration': submission.timingData.selectionPhaseDuration if submission.timingData else None
                 }
                 storage.save_csv(prompt_dict, "prompts.csv")
 
@@ -289,7 +329,6 @@ async def save_prompt(submission: PromptSubmission, background_tasks: Background
         trial_path = storage.base_dir / submission.prolificId / f"trial_{submission.trialIndex}.json"
         storage.save_json(submission.dict(), trial_path)
 
- # Start background image generation if a prompt was selected
         if submission.selectedPrompt:
             background_tasks.add_task(
                 generate_image_background,
@@ -306,27 +345,102 @@ async def save_prompt(submission: PromptSubmission, background_tasks: Background
         logger.error(f"Error in save_prompt: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/api/check-generation-status/{prolific_id}")
 async def check_generation_status(prolific_id: str):
     try:
         status_path = storage.base_dir / prolific_id / "generation_status.json"
+        if not status_path.exists():
+            return {
+                "status": "no_trials",
+                "completedTrials": 0,
+                "message": "No trials found"
+            }
+
         status = storage.load_json(status_path)
-        
-        all_completed = all(
-            status.get(str(i), {}).get('status') == 'completed'
-            for i in range(7)  # Check all 7 trials
-        )
-        
-        return {
-            "status": "ready" if all_completed else "pending",
-            "completedTrials": sum(
-                1 for i in range(7)
-                if status.get(str(i), {}).get('status') == 'completed'
-            )
-        }
+
+        # Function to check if a trial has been pending too long
+        def is_timed_out(trial_data):
+            if trial_data.get('status') != 'pending':
+                return False
+
+            try:
+                timestamp = datetime.fromisoformat(trial_data['timestamp'].replace('Z', '+00:00'))
+                time_diff = datetime.now(timestamp.tzinfo) - timestamp
+                return time_diff.total_seconds() > 720  # 12 minutes
+            except (KeyError, ValueError):
+                return False
+
+        # Mark timed out trials as failed
+        for trial_id, trial_data in status.items():
+            if is_timed_out(trial_data):
+                status[trial_id]['status'] = 'failed'
+                status[trial_id]['error'] = 'Generation timed out'
+
+        # Get trials by their status (after timeout check)
+        completed_trials = [
+            i for i in range(7)
+            if status.get(str(i), {}).get('status') == 'completed'
+        ]
+        pending_trials = [
+            i for i in range(7)
+            if status.get(str(i), {}).get('status') == 'pending'
+        ]
+
+        # Check status of trial 6 specifically
+        final_trial = status.get('6', {})
+        final_trial_status = final_trial.get('status') if final_trial else None
+        has_final_trial_submission = final_trial_status is not None
+
+        # 1. If trial 6 is pending and not timed out, must wait
+        if has_final_trial_submission and final_trial_status == 'pending':
+            return {
+                "status": "pending",
+                "completedTrials": len(completed_trials),
+                "message": "Waiting for final trial completion"
+            }
+
+        # 2. If we have any non-timed-out pending trials
+        if pending_trials:
+            return {
+                "status": "pending",
+                "completedTrials": len(completed_trials),
+                "message": "Trials still processing"
+            }
+
+        # 3. If we have any completed trials -> ready for rating
+        if completed_trials:
+            # Save the updated status with timeout information
+            storage.save_json(status, status_path)
+            return {
+                "status": "ready",
+                "completedTrials": len(completed_trials),
+                "message": f"Found {len(completed_trials)} completed trials"
+            }
+
+        # 4. If we get here, we have no completed trials and no pending trials
+        # Save the updated status with timeout information
+        storage.save_json(status, status_path)
+        if not status:
+            return {
+                "status": "no_trials",
+                "completedTrials": 0,
+                "message": "No trials submitted"
+            }
+        else:
+            return {
+                "status": "all_failed",
+                "completedTrials": 0,
+                "message": "All attempted trials failed"
+            }
+
     except Exception as e:
         logger.error(f"Error checking generation status: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error checking status: {str(e)}"
+        )
+
 
 @app.get("/api/get-all-images/{prolific_id}")
 async def get_all_images(prolific_id: str):
@@ -337,32 +451,38 @@ async def get_all_images(prolific_id: str):
 
         status = storage.load_json(status_path)
         base_url = os.getenv('API_URL', 'http://localhost:8000')
-        
+
         images = []
         for trial_index in range(7):
             trial_status = status.get(str(trial_index))
             if trial_status and trial_status['status'] == 'completed':
-                images.append({
-                    'trialIndex': trial_index,
-                    'imagePath': f"{base_url}/data/{prolific_id}/images/trial_{trial_index:02d}.png",
-                    'prompt': trial_status['prompt'],
-                    'theme': trial_status['theme'],
-                    'condition': trial_status['condition']
-                })
+                # Verify the image file exists
+                image_file = storage.base_dir / prolific_id / "images" / f"trial_{trial_index:02d}.png"
+                if image_file.exists():
+                    images.append({
+                        'trialIndex': trial_index,
+                        'imagePath': f"{base_url}/data/{prolific_id}/images/trial_{trial_index:02d}.png",
+                        'prompt': trial_status['prompt'],
+                        'theme': trial_status['theme'],
+                        'condition': trial_status['condition']
+                    })
 
-        if not images:
+        # Return success if we have any valid images
+        if images:
+            return {'images': sorted(images, key=lambda x: x['trialIndex'])}
+        else:
             raise HTTPException(status_code=404, detail="No completed images found")
 
-        return {'images': sorted(images, key=lambda x: x['trialIndex'])}
     except Exception as e:
         logger.error(f"Error retrieving images: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/api/save-ratings")
 async def save_ratings(ratings: List[ImageRating]):
     try:
         logger.info(f"Saving ratings for participant: {ratings[0].prolificId}")
-        
+
         # Save each rating to CSV
         for rating in ratings:
             rating_dict = {
@@ -385,6 +505,7 @@ async def save_ratings(ratings: List[ImageRating]):
         logger.error(f"Error saving ratings: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/health")
 async def health_check():
     try:
@@ -400,12 +521,13 @@ async def health_check():
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-    
+
+
 @app.post("/api/save-timing")
 async def save_timing(timing: PageTiming):
     try:
         logger.info(f"Saving page timing for participant: {timing.prolificId}")
-        
+
         timing_dict = {
             'timestamp': timing.timestamp,
             'prolificId': timing.prolificId,
@@ -413,15 +535,16 @@ async def save_timing(timing: PageTiming):
             'duration_ms': timing.duration,
             'duration_seconds': timing.duration / 1000
         }
-        
+
         # Save to CSV
         storage.save_csv(timing_dict, "page_timings.csv")
-        
+
         return {"status": "success", "message": "Timing saved successfully"}
     except Exception as e:
         logger.error(f"Error saving timing: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))    
-    
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/mark-completion")
 async def mark_completion(
     prolific_id: str,
@@ -433,14 +556,14 @@ async def mark_completion(
             "timestamp": timestamp,
             "completedAt": datetime.now().isoformat()
         }
-        
+
         # Save to CSV
         storage.save_csv(completion_data, "completions.csv")
-        
+
         # Save individual JSON
         completion_path = storage.base_dir / prolific_id / "completion.json"
         storage.save_json(completion_data, completion_path)
-        
+
         return {"status": "success", "message": "Completion recorded"}
     except Exception as e:
         logger.error(f"Error recording completion: {str(e)}")
