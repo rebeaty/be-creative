@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 
 // Configurable Constants
-const TRIAL_TIME = 120; // 2 minutes in seconds
-const PRACTICE_TIME = 30; // 30 seconds for practice
+const TRIAL_TIME = 12; // 2 minutes in seconds
+const PRACTICE_TIME = 10; // 30 seconds for practice
 const WARNING_TIME = 30; // 30 seconds warning threshold
 
 const PRACTICE_THEME = "SPACE";
