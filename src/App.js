@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import UserRestrictions from './UserRestrictions';
 
 // Configurable Constants
 const TRIAL_TIME = 12; // 2 minutes in seconds
@@ -1298,6 +1299,7 @@ const PageComponent = pageComponents[currentPage];
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
+      <UserRestrictions />
       <div className="max-w-2xl mx-auto px-4">
         {isLoading && <LoadingOverlay />}
         {PageComponent && <PageComponent {...getPageProps()} />}
