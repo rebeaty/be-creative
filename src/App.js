@@ -2,18 +2,18 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import UserRestrictions from './UserRestrictions';
 
 // Configurable Constants
-const TRIAL_TIME = 12; // 2 minutes in seconds
-const PRACTICE_TIME = 10; // 30 seconds for practice
+const TRIAL_TIME = 120; // 2 minutes in seconds
+const PRACTICE_TIME = 30; // 30 seconds for practice
 const WARNING_TIME = 30; // 30 seconds warning threshold
 
-const PRACTICE_THEME = "SPACE";
+const PRACTICE_THEME = "FUTURE";
 const TRIAL_THEMES = [
-  "TIME",
-  "MYSTERY",
-  "COMFORT",
   "MEMORY",
-  "CURIOSITY",
-  "FUTURE"
+  "MYSTERY",
+  "EXPLORATION",
+  "SILENCE",
+  "MOOD",
+  "TIME"
 ];
 
 const CONDITIONS = { // each has a long form instruction (before trial) and short form instruction (during)
@@ -407,7 +407,7 @@ const ConsentForm = ({ onAccept }) => {
       <section>
         <h3 className="text-xl font-semibold mb-2">Duration and Compensation</h3>
         <p className="text-gray-700">
-          The study will take approximately 45 minutes to complete. You will be paid for your participation through Prolific.
+          The study will take approximately one hour to complete. You will be paid for your participation through Prolific.
         </p>
       </section>
 
@@ -519,8 +519,8 @@ const GeneralInstructions = ({ onContinue }) => (
       <div className="bg-gray-50 p-4 rounded-lg space-y-4">
         <h3 className="font-semibold text-gray-800">Task Structure:</h3>
         <div className="space-y-2 text-gray-700">
-          <p>The study consists of seven trials structured as follows:</p>
-          <p>• One practice trial (30s) to familiarize you with the task</p>
+          <p>The task consists of seven trials structured as follows:</p>
+          <p>• One practice trial (30s) to familiarize you with the procedure</p>
           <p>• Six main trials with <span className="underline">different themes</span> and <span className="underline">different instructions</span></p>
           <p>• For each main trial, you will have 2 minutes to write prompts</p>
           <p>• When the timer is up, you will select your best prompt</p>
@@ -532,9 +532,10 @@ const GeneralInstructions = ({ onContinue }) => (
       <div className="bg-amber-50 p-4 rounded-lg space-y-2">
         <p className="font-medium text-amber-800">Important Tips:</p>
         <ul className="list-disc pl-5 space-y-1 text-amber-800">
-          <li>Use specific and clear language so the AI understands your idea</li>
-          <li>Vague prompts (e.g., single words) may be misinterpreted by the AI</li>
-          <li>Do not use explicit language or otherwise inappropriate content</li>
+          <li>Use precise, descriptive language so the AI understands your ideas</li>
+          <li>Avoid vague or single-word prompts, which the AI may misinterpret</li>
+          <li>Do not include any hateful or harassing language, violence, or sexual content</li>
+          <li>Do not enter personal information or names of individuals</li>
         </ul>
       </div>
 
@@ -1311,7 +1312,7 @@ const PageComponent = pageComponents[currentPage];
 const ThankYou = () => {
   useEffect(() => {
     const timer = setTimeout(() => {
-      window.location.href = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+      window.location.href = 'https://pennstate.qualtrics.com/jfe/form/SV_ebwlMiqnbMpIes6';
     }, 5000);
     return () => clearTimeout(timer);
   }, []);
