@@ -239,7 +239,7 @@ const ProlificIdEntry = ({ onSubmit }) => {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label htmlFor="prolificId" className="block text-gray-700 mb-2">
-            Prolific ID:
+            PSU ID:
           </label>
           <input
             id="prolificId"
@@ -247,7 +247,7 @@ const ProlificIdEntry = ({ onSubmit }) => {
             className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={id}
             onChange={(e) => setId(e.target.value)}
-            placeholder="Enter your Prolific ID"
+            placeholder="Enter your PSU ID"
           />
         </div>
         <Button type="submit" disabled={!id.trim()}>Continue</Button>
