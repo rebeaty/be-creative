@@ -258,112 +258,113 @@ const ProlificIdEntry = ({ onSubmit }) => {
 
 const AiExperienceSurvey = ({ onSubmit }) => {
   const [responses, setResponses] = useState({
-    genAiExperience: '',
-    textToImageExperience: '',
-    toolsUsed: {
-      dall_e: false,
-      midjourney: false,
-      stable_diffusion: false,
-      other: false
-    },
-    otherTools: ''
+    generalExperience: null,
+    chatbotUse: null,
+    imageGenUse: null,
+    promptKnowledge: null,
+    confidence: null
   });
   const [error, setError] = useState(null);
 
+  // Define questions with their labels
+  const questionsConfig = useMemo(() => [
+    {
+      id: 'generalExperience',
+      question: 'How experienced are you with using AI tools (e.g., chatbots, image generation)?',
+      labels: ['Not experienced at all', 'Very experienced']
+    },
+    {
+      id: 'chatbotUse',
+      question: 'How often did you use AI chatbots (e.g., ChatGPT, Claude, Gemini) in the past year?',
+      labels: ['Never', 'Very often']
+    },
+    {
+      id: 'imageGenUse',
+      question: 'How often did you use text-to-image AI (e.g., DALL-E, Midjourney, Craiyon) in the past year?',
+      labels: ['Never', 'Very often']
+    },
+    {
+      id: 'promptKnowledge',
+      question: 'How knowledgeable are you about writing effective prompts for AI systems?',
+      labels: ['Not knowledgeable at all', 'Very knowledgeable']
+    },
+    {
+      id: 'confidence',
+      question: 'How confident are you in your ability to work with generative AI?',
+      labels: ['Not confident at all', 'Very confident']
+    }
+  ], []);
+
+  // Randomize question order once on mount
+  const [questionOrder] = useState(() => 
+    questionsConfig.map(q => q.id).sort(() => Math.random() - 0.5)
+  );
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!responses.genAiExperience || !responses.textToImageExperience) {
-      setError('Please complete all required fields');
+    const missingResponses = questionOrder.some(id => responses[id] === null);
+
+    if (missingResponses) {
+      setError('Please respond to all questions before continuing.');
       return;
     }
 
-    onSubmit(responses);
+    onSubmit({
+      ...responses,
+      questionOrder
+    });
   };
 
   return (
     <Card>
-      <h2 className="text-2xl font-semibold text-blue-600 mb-6">AI Experience</h2>
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div>
-          <label className="block text-gray-700 mb-2">
-            How would you rate your experience with generative AI tools (e.g., ChatGPT)?
-          </label>
-          <select
-            className="w-full p-3 border rounded-lg"
-            value={responses.genAiExperience}
-            onChange={(e) => setResponses(prev => ({...prev, genAiExperience: e.target.value}))}
-          >
-            <option value="">Select an option</option>
-            <option value="none">No experience</option>
-            <option value="basic">Basic</option>
-            <option value="intermediate">Intermediate</option>
-            <option value="advanced">Advanced</option>
-            <option value="expert">Expert</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-gray-700 mb-2">
-            How often do you use text-to-image generation tools?
-          </label>
-          <select
-            className="w-full p-3 border rounded-lg"
-            value={responses.textToImageExperience}
-            onChange={(e) => setResponses(prev => ({...prev, textToImageExperience: e.target.value}))}
-          >
-            <option value="">Select an option</option>
-            <option value="never">Never</option>
-            <option value="rarely">Rarely</option>
-            <option value="sometimes">Sometimes</option>
-            <option value="often">Often</option>
-            <option value="very_often">Very often</option>
-          </select>
-        </div>
-
-        <div className="space-y-2">
-          <label className="block text-gray-700">
-            Which text-to-image tools have you used? (Select all that apply)
-          </label>
-          {Object.entries({
-            dall_e: "DALL-E",
-            midjourney: "Midjourney",
-            stable_diffusion: "Stable Diffusion",
-            other: "Other"
-          }).map(([key, label]) => (
-            <label key={key} className="flex items-center space-x-2">
+      <h2 className="text-2xl font-semibold text-blue-600 mb-6">AI Experience Survey</h2>
+      <form onSubmit={handleSubmit} className="space-y-8">
+        {questionOrder.map((id) => {
+          const config = questionsConfig.find(q => q.id === id);
+          return (
+            <div key={id} className="space-y-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {config.question}
+              </label>
               <input
-                type="checkbox"
-                checked={responses.toolsUsed[key]}
+                type="range"
+                min="0"
+                max="4"
+                step="1"
+                value={responses[id] ?? 2}
                 onChange={(e) => setResponses(prev => ({
                   ...prev,
-                  toolsUsed: {
-                    ...prev.toolsUsed,
-                    [key]: e.target.checked
-                  }
+                  [id]: Number(e.target.value)
                 }))}
-                className="h-4 w-4"
+                className={`w-[calc(100%-1rem)] mx-2 [accent-color:#3B82F6] [-webkit-appearance:none] h-3 bg-blue-100 rounded-lg ${
+                  responses[id] !== null ? 'opacity-100' : 'opacity-50'
+                }`}
               />
-              <span>{label}</span>
-            </label>
-          ))}
-        </div>
-
-        {responses.toolsUsed.other && (
-          <div>
-            <label className="block text-gray-700 mb-2">
-              Please specify other tools:
-            </label>
-            <input
-              type="text"
-              className="w-full p-3 border rounded-lg"
-              value={responses.otherTools}
-              onChange={(e) => setResponses(prev => ({...prev, otherTools: e.target.value}))}
-            />
-          </div>
-        )}
+              <div className="flex justify-between text-xs text-gray-400 mt-1">
+                {[0, 1, 2, 3, 4].map((value) => (
+                  <div key={value} className="flex flex-col items-center text-center w-10">
+                    <span className={responses[id] === value ? 'font-bold text-blue-500' : ''}>
+                      {value}
+                    </span>
+                    {(value === 0 || value === 4) && (
+                      <span className={`mt-1 whitespace-pre-line ${
+                        responses[id] === value ? 'font-bold text-blue-500' : ''
+                      }`}>
+                        {value === 0 ? config.labels[0] : config.labels[1]}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
 
         {error && <ErrorDisplay message={error} />}
-        <Button type="submit">Continue</Button>
+        
+        <Button type="submit">
+          Continue
+        </Button>
       </form>
     </Card>
   );
@@ -803,6 +804,34 @@ const MainApp = () => {
       condition: conditions.sequence[currentTrialIndex - 1].id
     };
   }, [currentTrialIndex, conditions.sequence, trialThemes]);
+
+  const handleSurveySubmission = async (surveyData) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+  
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/save-survey`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prolificId,
+          survey: surveyData,
+          timestamp: new Date().toISOString()
+        })
+      });
+  
+      if (!response.ok) {
+        throw new Error('Failed to save survey');
+      }
+  
+      setCurrentPage('generalInstructions');
+    } catch (err) {
+      setError(err.message);
+      console.error('Survey submission error:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handlePromptSubmission = async (submittedPrompts, selectedPrompt, timingData) => {
     try {
@@ -1246,7 +1275,7 @@ const getPageProps = () => {
     case 'aiExperienceSurvey':
       return {
         ...baseProps,
-        onSubmit: () => setCurrentPage('generalInstructions')
+        onSubmit: handleSurveySubmission
       };
     case 'generalInstructions':
       return {
