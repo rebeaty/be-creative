@@ -408,7 +408,7 @@ const ConsentForm = ({ onAccept }) => {
       <section>
         <h3 className="text-xl font-semibold mb-2">Duration and Compensation</h3>
         <p className="text-gray-700">
-          The study will take approximately one hour to complete. You will be paid for your participation through Prolific.
+          The study will take approximately one hour to complete. You will receive 1 SONA credit for participation.
         </p>
       </section>
 
